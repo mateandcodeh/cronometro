@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#000000">
+<title>Mi Cronómetro</title>
+<style>
+  :root {
+    --bg: #000000;
+    --panel: #0a0a0a;
+    --border: #1c1c1c;
+    --tx: #f2f2f2;
+    --sub: #9aa0a6;
+    --ac: #8b5cf6;
+    --ok: #2f9e6e;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+    background-color: var(--bg);
+    color: var(--tx);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  
+  .cronometro-wrap {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 40px 20px;
+    border-radius: 20px;
+    width: 100%;
+    max-width: 320px;
+    text-align: center;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  }
+
+  #display {
+    font-size: 56px;
+    font-weight: 700;
+    font-family: ui-monospace, monospace;
+    color: var(--tx);
+    margin-bottom: 30px;
+    letter-spacing: 2px;
+  }
+
+  .botones {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+  }
+
+  button {
+    flex: 1;
+    padding: 15px;
+    border-radius: 12px;
+    border: none;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: transform 0.1s, background 0.2s;
+  }
+  button:active { transform: scale(0.95); }
+
+  #btnStart {
+    background-color: var(--ac);
+    color: white;
+  }
+  #btnStart.pausado {
+    background-color: var(--ok);
+  }
+
+  #btnReset {
+    background-color: transparent;
+    border: 1px solid var(--border);
+    color: var(--sub);
+  }
+</style>
+</head>
+<body>
+
+  <div class="cronometro-wrap">
+    <div id="display">00:00.0</div>
+    <div class="botones">
+      <button id="btnStart">Iniciar</button>
+      <button id="btnReset">Reiniciar</button>
+    </div>
+  </div>
+
+<script>
+  const display = document.getElementById('display');
+  const btnStart = document.getElementById('btnStart');
+  const btnReset = document.getElementById('btnReset');
+
+  let startTime = 0;
+  let elapsedTime = 0;
+  let timerInterval;
+  let isRunning = false;
+
+  // Formatear el tiempo a MM:SS.d
+  function formatTime(time) {
+    const minutes = Math.floor(time / 60000);
+    const seconds = Math.floor((time % 60000) / 1000);
+    const tenths = Math.floor((time % 1000) / 100);
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${tenths}`;
+  }
+
+  function updateDisplay() {
+    const now = Date.now();
+    const time = elapsedTime + (now - startTime);
+    display.textContent = formatTime(time);
+  }
+
+  function startTimer() {
+    startTime = Date.now();
+    timerInterval = setInterval(updateDisplay, 100);
+    isRunning = true;
+    btnStart.textContent = 'Pausar';
+    btnStart.classList.add('pausado');
+    if (navigator.vibrate) navigator.vibrate(30);
+  }
+
+  function pauseTimer() {
+    clearInterval(timerInterval);
+    elapsedTime += Date.now() - startTime;
+    isRunning = false;
+    btnStart.textContent = 'Reanudar';
+    btnStart.classList.remove('pausado');
+    if (navigator.vibrate) navigator.vibrate(30);
+  }
+
+  // Botón Iniciar / Pausar
+  btnStart.addEventListener('click', () => {
+    if (isRunning) {
+      pauseTimer();
+    } else {
+      startTimer();
+    }
+  });
+
+  // Botón Reiniciar
+  btnReset.addEventListener('click', () => {
+    clearInterval(timerInterval);
+    elapsedTime = 0;
+    isRunning = false;
+    display.textContent = '00:00.0';
+    btnStart.textContent = 'Iniciar';
+    btnStart.classList.remove('pausado');
+    if (navigator.vibrate) navigator.vibrate([50, 50, 50]);
+  });
+
+  // Guardar el tiempo en el celular al cerrar la app
+  window.addEventListener('beforeunload', () => {
+    if (isRunning) {
+      pauseTimer();
+    }
+    localStorage.setItem('crono_time', elapsedTime);
+  });
+
+  // Cargar el tiempo guardado al abrir
+  const guardado = localStorage.getItem('crono_time');
+  if (guardado) {
+    elapsedTime = parseInt(guardado);
+    display.textContent = formatTime(elapsedTime);
+  }
+</script>
+</body>
+</html>
