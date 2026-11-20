@@ -1,0 +1,121 @@
+name: build-apk-release
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          
+      - uses: android-actions/setup-android@v4
+          
+      - name: Instalar deps
+        run: |
+          if [ -f package.json ]; then npm install; fi
+          if [ ! -d node_modules/@capacitor ]; then
+            npm install @capacitor/core @capacitor/cli @capacitor/android
+          fi
+          
+      - name: Agregar Android
+        run: |
+          if [ ! -d android ]; then npx cap add android; fi
+          
+      - name: Sync
+        run: npx cap sync android
+        
+      - name: Inyectar Logo (si existe)
+        run: |
+          if [ -f icon.png ]; then
+            cp icon.png android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+            cp icon.png android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png
+            cp icon.png android/app/src/main/res/mipmap-xhdpi/ic_launcher.png
+            cp icon.png android/app/src/main/res/mipmap-hdpi/ic_launcher.png
+            cp icon.png android/app/src/main/res/mipmap-mdpi/ic_launcher.png
+            # También para el ícono redondo si Android lo pide
+            cp icon.png android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
+            cp icon.png android/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png
+            cp icon.png android/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png
+            cp icon.png android/app/src/main/res/mipmap-hdpi/ic_launcher_round.png
+            cp icon.png android/app/src/main/res/mipmap-mdpi/ic_launcher_round.png
+          fi
+          
+      - name: Decodificar keystore
+        run: |
+          if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
+            echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/bitacora-release.keystore
+          fi
+          
+      - name: Configurar firma + versionCode automático
+        run: |
+          if [ -f android/app/bitacora-release.keystore ]; then
+            VC=$(date +%s)
+            cat >> android/app/build.gradle <<EOF
+
+          android {
+              defaultConfig {
+                  versionCode $VC
+              }
+              signingConfigs {
+                  release {
+                      storeFile file("bitacora-release.keystore")
+                      storePassword System.getenv("KEYSTORE_PASSWORD")
+                      keyAlias System.getenv("KEY_ALIAS")
+                      keyPassword System.getenv("KEY_PASSWORD")
+                  }
+              }
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                      minifyEnabled false
+                  }
+              }
+          }
+          EOF
+          fi
+          
+      - name: Compilar APK
+        working-directory: android
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          chmod +x ./gradlew
+          if [ -f app/bitacora-release.keystore ]; then
+            ./gradlew assembleRelease --no-daemon
+          else
+            ./gradlew assembleDebug --no-daemon
+          fi
+          
+      - name: Preparar artifact
+        run: |
+          mkdir -p dist
+          if [ -d android/app/build/outputs/apk/release ]; then
+            find android/app/build/outputs/apk/release -name "*.apk" -exec cp {} dist/app-release.apk \;
+          fi
+          if [ ! -f dist/app-release.apk ] && [ -d android/app/build/outputs/apk/debug ]; then
+            find android/app/build/outputs/apk/debug -name "*.apk" -exec cp {} dist/app-release.apk \;
+          fi
+          ls -la dist/ || true
+          
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: dist/app-release.apk
+          retention-days: 30
